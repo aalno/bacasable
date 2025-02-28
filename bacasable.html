@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Bac à sable</title>
+	<!--
+	Version du rendu
+	-->
+	<style type="text/css">
+		body
+		{
+			user-select: none;
+			--couleur: white;
+			--couleur-degrade: white;
+			--couleur-bord: black;
+			--epaisseur-bord: 2px;
+
+			--surface: 25vw;
+			--taille-item: 80px;
+
+			padding: 0;
+			margin: 5vw;
+
+			display: flex;
+			justify-content: space-between;
+		}
+
+		#panneauBoutons
+		{
+			margin-top: 4vh;
+			display: flex;
+			justify-content: center;
+		}
+
+		#panneauBoutons button
+		{
+			margin-right: 1rem;
+			padding: 1rem;
+
+			border: solid var(--couleur-bord) var(--epaisseur-bord);
+			border-radius: 50%;
+			background: var(--couleur);
+		}
+
+		#panneauBoutons button:disabled svg
+		{
+			stroke: black;
+			fill: white;
+		}
+
+		#panneauCode
+		{
+			vertical-align: top;
+			display: none;
+			font-family: monospace;
+			padding: 40px;
+			box-sizing: border-box;
+			min-height: calc(3*var(--taille-item));
+
+			border-radius: 30px;
+			border-top-right-radius: 0;
+
+			background: linear-gradient(to bottom left, var(--couleur), var(--couleur), var(--couleur-degrade));
+
+			border: solid var(--couleur-bord) var(--epaisseur-bord);
+		}
+
+		#panneauCode.visible
+		{
+			display: inline-block;
+		}
+
+		#panneauCode .code
+		{
+			width: 20vw;
+			display: none;
+		}
+		#panneauCode .code.visible { display: block; }
+
+		#panneauCode p
+		{
+			margin: 0;
+		}
+		#panneauCode .decalage
+		{
+			margin-left: 5%;
+		}
+		#panneauCode textarea
+		{
+			resize: none;
+			width: 100%;
+			height: 60px;
+		}
+		#panneauCode textarea, input
+		{
+			font-family: monospace;
+			width: 100%;
+			font-size: 1em;
+		}
+
+		#inventaire
+		{
+			display: inline-block;
+			vertical-align: top;
+
+			transform: translateX(calc(-1 * var(--epaisseur-bord)));
+		}
+
+		#panneauCode + #inventaire div
+		{
+			width: var(--taille-item);
+			height: var(--taille-item);
+			margin-bottom: 20%;
+			padding: 20%;
+
+			border: solid var(--couleur-bord) var(--epaisseur-bord);
+			box-sizing: border-box;
+
+			border-radius: 50%;
+
+			background-color: var(--couleur-degrade);
+		}
+
+		#panneauCode.visible + #inventaire div
+		{
+			border-top-left-radius: 0;
+			border-bottom-left-radius: 0;
+		}
+
+		#panneauCode + #inventaire div img
+		{
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+		}
+
+		#panneauCode + #inventaire div.visible
+		{
+			background-color: var(--couleur);
+			border-left: none;
+		}
+
+		#bacSable
+		{
+			display: inline-block;
+			vertical-align: top;
+
+			border: solid black 2px;
+			position: relative;
+			height: var(--surface);
+			width: var(--surface);
+
+			box-sizing: border-box;
+		}
+
+		#bacSable div
+		{
+			position: absolute;
+			border-radius: 50%;
+		}
+
+		#bacSable div img
+		{
+			width: 100%;
+			height: 100%;
+			pointer-events: none;
+		}
+
+		#resultat
+		{
+			display: inline-block;
+			vertical-align: top;
+			width: var(--surface);
+			height: var(--surface);
+		}
+		iframe
+		{
+			width: 100%;
+			height: 100%;
+			border: none;
+		}
+		
+	</style>
+</head>
+<body>
+	<div id="panneau">
+		<div id="panneauCode"></div><div id="inventaire"></div>
+	</div>
+	<div>
+		<div id="bacSable"></div>
+		<div id="panneauBoutons">
+			<button id="lancer"><svg width="16px" height="16px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" focusable="false"><polygon id="play" points="0 0 16 8 0 16"></polygon><polygon id="play" points="0 0 16 8 0 16"></polygon></svg></button>
+			<button id="arreter"><svg width="16px" height="16px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" focusable="false"><rect id="stop" x="0" y="0" width="16" height="16"></rect></svg></button>
+	</div>
+	</div><div id="resultat"> <!-- Le contenant du fichier p5js --> </div>
+	<script type="text/javascript">
+		const panneauCode = document.getElementById("panneauCode");
+		var itemVisible = null;
+
+		const inventaire = document.getElementById("inventaire");
+		var listeItems = [];
+
+		const bacSable = document.getElementById("bacSable");
+
+		var listeSymboles = [];
+		symbolePris = null;
+		var decalX, decalY; // décalages pour que ce soit fluide quand on déplace les symboles
+
+		// Pour déplacer les symboles
+		document.addEventListener("pointerup", () => symbolePris = null);
+		document.addEventListener("pointermove", (e) =>
+		{
+			if (symbolePris != null)
+				symbolePris.placerSymbole(e.clientX, e.clientY, decalX, decalY);
+		});
+
+		// Drag'n'drop
+
+		bacSable.addEventListener("dragover", (e) => e.preventDefault());
+		bacSable.addEventListener("drop", (e) =>
+		{
+			let symbole = new Symbole(e.clientX, e.clientY, e.dataTransfer.getData("text"), e.dataTransfer.getData("img"));
+		});
+
+		class Item //Ce qui génère les symboles
+		{
+			/*
+				div
+				panneauCode
+				codeApparition
+				image
+			*/
+
+			constructor(nom, srcImg, parametres)
+			{
+				this.nom = nom;
+				this.div = document.createElement("div");
+				this.div.id = nom;
+
+				this.img = document.createElement("img");
+				this.img.src = srcImg;
+
+				this.div.appendChild(this.img);
+
+				this.div.addEventListener("dragstart", (e) =>
+				{
+					e.dataTransfer.clearData();
+					e.dataTransfer.setData("text/plain", e.target.id);
+					e.dataTransfer.setData("img", srcImg);
+
+					e.dataTransfer.setDragImage(this.img, 35, 35);
+				});
+				inventaire.appendChild(this.div);
+
+				this.panneauCode = document.createElement("div");
+				this.genererPanneauCode(parametres);
+
+				// Sélectionner panneau
+				this.div.addEventListener("click", (e) =>
+				{
+					if (itemVisible != null)
+					{
+						itemVisible.div.classList.remove("visible");
+						itemVisible.panneauCode.classList.remove("visible");
+					}
+
+					itemVisible = this;
+					panneauCode.classList.add("visible");
+					this.panneauCode.classList.add("visible");
+					this.div.classList.add("visible");
+				});
+
+				this.codeApparition = "";
+			}
+
+			genererCodeApparition()
+			{
+				let champs = this.panneauCode.getElementsByClassName("champ");
+				let listeParametres = [];
+				/*
+				0 : nom
+				1 : autres paramètres dans constructor
+				2 : condition pour être encore là
+				3 : dans afficher()
+				4 : dans evoluer()
+				5 : autres fonctions
+				*/
+
+				for (let i = 0 ; i < champs.length ; i++)
+				{
+					if (champs[i].value.length > 0)
+						listeParametres[i] = champs[i].value;
+					else listeParametres[i] = champs[i].placeholder;
+				}
+
+				this.codeApparition =
+				`creerApparition.${listeParametres[0]}  = ((x, y, signalerDisparition) => { let a = new ${listeParametres[0]} (x, y, signalerDisparition); listeApparitions.push(a); return a });` +
+				`class ${listeParametres[0]}` +
+				"{" +
+				"	constructor(x, y, signalerDisparition)" +
+				"	{" +
+				"		this.signalerDisparition = signalerDisparition;" +
+				"		this.x = x;" +
+				"		this.y = y;" +
+						listeParametres[1] +
+				`		this.encoreLa = () => { return (${listeParametres[2]}); };` +
+				"	}" +
+				`	afficher() { ${listeParametres[3]} }` +
+				`	evoluer() { ${listeParametres[4]} }` +
+				"	deplacer(x, y) {this.x = x; this.y = y;}" +
+					listeParametres[5] +
+				"}";
+			}
+
+			genererPanneauCode(parametres)
+			{
+				this.panneauCode.classList.add("code");
+
+				this.panneauCode.innerHTML = //Pas très propre ? Oui.
+				`<p>class <input class="champ" value="${this.nom}" type="text"></p>` +
+				'<p>{</p>' +
+				'<div class="decalage">' +
+				'<p>constructor(x, y)</p>' +
+				'<p>{</p>' +
+				'<div class="decalage">' +
+				'<p>super(x, y);</p>' +
+				`<textarea class="champ">${parametres[1]}</textarea>` +
+				`<p>this.encoreLa = () => { return (<input class="champ" value="${parametres[2]}" type="text">); };</p>` +
+				'</div>' +
+				'<p>}</p>' +
+				'<p>afficher()</p>' +
+				'<p>{</p>' +
+				`<div class="decalage"><textarea class="champ">${parametres[3]}</textarea></div>` +
+				'<p>}</p>' +
+				'<p>evoluer()</p>' +
+				'<p>{</p>' +
+				`<div class="decalage"><textarea class="champ">${parametres[4]}</textarea></div>` +
+				'<p>}</p>' +
+				`<textarea class="champ" value="${parametres[5]}"></textarea>` +
+				'</div>' +
+				'<p>}</p>';
+
+				panneauCode.appendChild(this.panneauCode);
+			};
+		}
+
+		class Symbole
+		{
+			/*
+				x
+				y
+				taille
+				div
+				apparition
+			*/
+			constructor(x, y, sorte, srcImg)
+			{
+				this.x = x;
+				this.y = y;
+				this.taille = 70;
+
+				this.div = document.createElement("div");
+				this.div.style.width = this.div.style.height = this.taille + "px";
+
+				this.img = document.createElement("img");
+				this.img.src = srcImg;
+
+				this.div.appendChild(this.img);
+
+				// Symbole déplaçable
+				listeSymboles.push(this); //Impression de commetre une hérésie, mais à ce stade...
+				bacSable.appendChild(this.div);
+
+				this.div.addEventListener("pointerdown", (e) => //Sélection pour déplacement
+				{
+					decalX = e.clientX - this.div.getBoundingClientRect().x;
+					decalY = e.clientY - this.div.getBoundingClientRect().y;
+					symbolePris = this;
+				});
+
+				this.apparition = iframe.contentWindow.creerApparition[sorte](this.x, this.y, () => { listeSymboles.splice(listeSymboles.indexOf(this),1); bacSable.removeChild(this.div);});
+
+				this.placerSymbole(x, y, this.taille/2, this.taille/2);
+			}
+
+			placerSymbole(clientX, clientY, dx, dy)
+			{
+				// Symbole : xy -> coin haut gauche
+				// Apparition : milieu (donc x + taille/2, y + taille/2)
+
+				// offsetX ne marche pas
+				this.x = clientX - bacSable.getBoundingClientRect().x - dx;
+				this.y = clientY - bacSable.getBoundingClientRect().y - dy;
+
+				// Pour ne pas que ça sorte du cadre
+				if (this.x < 0)
+					this.x = 0;
+				else if (this.x > bacSable.getBoundingClientRect().width - this.taille)
+					this.x = bacSable.getBoundingClientRect().width - this.taille;
+
+				if (this.y < 0)
+					this.y = 0;
+				else if (this.y > bacSable.getBoundingClientRect().height - this.taille)
+					this.y = bacSable.getBoundingClientRect().height - this.taille;
+
+				this.div.style.left = this.x + "px";
+				this.div.style.top = this.y + "px";
+
+				this.apparition.deplacer(this.x + this.taille/2, this.y + this.taille/2);
+			}
+		}
+
+		/*
+		0 : nom
+		1 : autres paramètres dans constructor
+		2 : condition pour être encore là
+		3 : dans afficher()
+		4 : dans evoluer()
+		5 : autres fonctions
+		*/
+
+		const parametresDefaut =
+		[
+			"inutile",
+			"this.valeur = 0;",
+			"this.valeur < 150",
+			'fill("white");&#10ellipse(this.x, this.y, 50, 50);&#10fill("black");&#10text(this.valeur, this.x, this.y);',
+			"this.valeur++;",
+			""
+		];
+
+		const parametresFlamme =
+		[
+			"inutile",
+			"this.valeur = 0;this.listeParticules = [];this.tempsGenerer = 0;",
+			"this.valeur < 250",
+			'noStroke();fill(200, 0, 0, 250 - this.valeur);push();translate(this.x, this.y);beginShape();vertex(0, -25);vertex(25, 0);vertex(0, 25);vertex(-25, 0);endShape(CLOSE);fill(255, 0, 0, 150);this.listeParticules.forEach((p) =>{fill(p.couleur);beginShape();vertex(p.x, p.y - 10);vertex(p.x + 5, p.y);vertex(p.x, p.y + 10);vertex(p.x - 5, p.y);endShape(CLOSE);});pop();',
+			"this.valeur++;if (this.tempsGenerer == 2){this.listeParticules.push({ x: random(-20, 20), y: random(-20, 20), couleur: color(random(150, 200), random(100, 200), 0, random(50, 200))});this.tempsGenerer = 0;}else { this.tempsGenerer++; }this.listeParticules.forEach((p) => p.y -= 3);this.listeParticules = this.listeParticules.filter((p) => p.y > random(-60, -40));",
+			""
+		]
+
+		const parametresEtoile =
+		[
+			"inutile",
+			"this.valeur = 0;this.listeTraces = [];",
+			"this.valeur < 200",
+			'stroke("#432F5B");       fill(250);              let tailleMaj = 25;       let tailleMin = 5;              this.listeTraces.forEach((t) =>       {       fill(250, 250, 25*this.listeTraces.indexOf(t));       push();       translate(t.x, t.y);       rotate(t.angle);       beginShape();       vertex(0, -tailleMaj);       vertex(tailleMin, -tailleMin);       vertex(tailleMaj, 0);       vertex(tailleMin, tailleMin);       vertex(0, tailleMaj);       vertex(-tailleMin, tailleMin);       vertex(-tailleMaj, 0);       vertex(-tailleMin, -tailleMin);       endShape(CLOSE);       pop();       fill(250);              push();       translate(this.x, this.y);       beginShape();       vertex(0, -tailleMaj);       vertex(tailleMin, -tailleMin);       vertex(tailleMaj, 0);       vertex(tailleMin, tailleMin);       vertex(0, tailleMaj);       vertex(-tailleMin, tailleMin);       vertex(-tailleMaj, 0);       vertex(-tailleMin, -tailleMin);       endShape(CLOSE);       pop();})',
+			"this.valeur++;this.listeTraces.push({ x: this.x, y: this.y, angle: this.valeur});if (this.listeTraces.length > 10) this.listeTraces.shift();",
+			""
+		];
+
+		const parametresEau =
+		[
+			"inutile",
+			"this.valeur = 0;",
+			"this.valeur < 150",
+			'noFill();       let taille = 20;       for (let i = 0 ; i < 10 ; i++)         {           stroke(0, 200, 230, 40 * i - this.valeur);           ellipse(this.x, this.y, taille, taille);           taille += this.valeur;         }              stroke(0, 200, 230, 150 - (100 * this.valeur/150));           ellipse(this.x, this.y, 100 - this.valeur*2);',
+			"this.valeur++;",
+			""
+		];
+
+		listeItems.push(new Item("Flamme", "images/flamme.png", parametresFlamme));
+		listeItems.push(new Item("Etoile", "images/etoile.png", parametresEtoile));
+		listeItems.push(new Item("Goutte", "images/goutte.png", parametresEau));
+
+		// P5JS
+
+		var codeEnsembleApparitions = "";
+
+		var iframe;
+
+		const boutonGo = document.getElementById("lancer");
+		boutonGo.addEventListener("click", () => lancer());
+
+		const boutonStop = document.getElementById("arreter");
+		boutonStop.addEventListener("click", () => arreter());
+		boutonStop.setAttribute("disabled", "disabled");
+
+		boutonStop.click();
+
+		function arreter()
+		{
+			boutonStop.setAttribute("disabled", "disabled");
+			boutonGo.removeAttribute("disabled");
+
+			listeItems.forEach((i) =>
+			{
+				i.div.draggable = false;
+			});
+
+			listeSymboles = [];
+			while (bacSable.firstChild)
+				bacSable.removeChild(bacSable.firstChild);
+			while (resultat.firstChild)
+				resultat.removeChild(resultat.firstChild);
+		}
+
+		function lancer()
+		{
+			boutonGo.setAttribute("disabled", "disabled");
+			boutonStop.removeAttribute("disabled");
+
+			codeEnsembleApparitions = "";
+			listeItems.forEach((i) =>
+			{
+				i.div.draggable = true;
+				i.genererCodeApparition();
+				codeEnsembleApparitions += i.codeApparition;
+			});
+
+			iframe = document.createElement("iframe");
+			resultat.appendChild(iframe);
+
+			let page = iframe.contentWindow.document;
+			page.open();
+			page.write('<!DOCTYPE html>' +
+			'<html lang="en">' +
+			'<head>' +
+			'<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.js"><\/script>' +
+			'<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/addons/p5.sound.min.js"><\/script>' +
+			'<meta charset="utf-8" />' +
+			'<style>html, body{ margin: 0; padding: 0 } canvas{ display: block; }<\/style>' +
+			'</head>' +
+			'<body>' +
+			'<main></main>' +
+			'<script>' +
+			"var creerApparition = {};" +
+			"var listeApparitions = [];" +
+			`function setup() { createCanvas(${resultat.getBoundingClientRect().width}, ${resultat.getBoundingClientRect().height}); }` +
+			"function draw()" +
+			"{" +
+			'background("#432F5B");' +
+			"  noStroke();" +
+			"  fill(255, 5);" +
+			"  for (let j=0, y = 0; y < height + 1; j++, y += 100)" +
+			"    {" +
+			"        for (let x = 0; x < width + 1; x += 100)" +
+			"      {" +
+			"        ellipse(x + ((j%2 == 0) ? 50 : 0), y, 200);" +
+			"      }" +
+			"    }" +
+			"	listeApparitions.forEach((e) =>" +
+			"	{" +
+			"	e.afficher();" +
+			"	e.evoluer();" +
+			"	if (!e.encoreLa()) e.signalerDisparition()" +
+			"	});" +
+			"	listeApparitions = listeApparitions.filter((e) => e.encoreLa());" +
+			"};" +
+			codeEnsembleApparitions +
+			'<\/script>' +
+			'</body>' +
+			'</html>');
+			page.close();
+		}
+	</script>
+</body>
+</html>
